@@ -39,10 +39,10 @@ def reformat_loom(ds, filename):
     # This includes renaming and reorganizing attributes to the required format
     col_attrs = dict(ds.ca.items())
     col_attrs['group'] = col_attrs['GROUP']
-    col_attrs['n_counts'] = col_attrs['nCount_RNA']
+    #col_attrs['n_counts'] = col_attrs['nCount_RNA']
     col_attrs['organ_major'] = len(col_attrs['nCount_RNA'])*['blood']
-    row_attrs = {'ensembl_id': list(dict(ds.ra.items())['Gene'])}
-    return loompy.create(filename, ds[:, :], row_attrs, col_attrs)
+    #row_attrs = {'ensembl_id': list(dict(ds.ra.items())['Gene'])}
+    return loompy.create(filename, ds[:, :], ds.ra, col_attrs)
 
 def main():
     # Main function to run the script

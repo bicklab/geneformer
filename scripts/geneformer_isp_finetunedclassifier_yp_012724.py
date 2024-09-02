@@ -45,7 +45,7 @@ def parse_arguments():
     parser.add_argument('--embeddings_output_dir', required=True)
     parser.add_argument('--state_embs_prefix', required=True)
     parser.add_argument('--perturb_type', default='delete')
-    parser.add_argument('--gene_list', default='all') #remember must be Ensembl ID 
+    parser.add_argument('--gene_list', nargs='+', default='all') #remember must be Ensembl ID 
     # e.g., ["ENSG00000168769", "ENSG00000119772", "ENSG00000171456", "ENSG00000096968", "ENSG00000141510"]
     parser.add_argument('--perturb_output', required=True)
     parser.add_argument('--perturb_prefix', required=True)
@@ -69,19 +69,20 @@ def main():
     state_embs_prefix = args.state_embs_prefix
     perturb_type = args.perturb_type
     gene_list = args.gene_list
+    print(gene_list)
     perturb_output = args.perturb_output
     perturb_prefix = args.perturb_prefix
     perturb_stats_output = args.perturb_stats_output
     perturb_stats_prefix = args.perturb_stats_prefix
 
     # Setting up filter for class of interest (e.g., cell type)
-    filter_data_dict = {filter_field: [filter_class]}
+    #filter_data_dict = {filter_field: [filter_class]}
 
     # Obtain start, goal, and alternative embedding positions
     # Separate from perturb_data to avoid repeating calculations when parallelizing
     embex = EmbExtractor(model_type="CellClassifier",
                         num_classes=2,
-                        filter_data=filter_data_dict,
+                        #filter_data=filter_data_dict,
                         max_ncells=1000,
                         emb_layer=0,
                         summary_stat="exact_mean",
@@ -98,7 +99,9 @@ def main():
                                        path_to_train_dataset,
                                        embeddings_output_dir,
                                        state_embs_prefix)
-    
+
+    print("---------Embeddings extracted-------\n")
+
     # Setting up in silico perturbation
     isp = InSilicoPerturber(perturb_type=perturb_type,
                             perturb_rank_shift=None,
@@ -109,7 +112,7 @@ def main():
                             num_classes=2,
                             emb_mode="cell",
                             cell_emb_style="mean_pool",
-                            filter_data=filter_data_dict,
+                            #filter_data=filter_data_dict,
                             cell_states_to_model=cell_states_to_model,
                             state_embs_dict=state_embs_dict,
                             max_ncells=2000,
@@ -117,6 +120,8 @@ def main():
                             forward_batch_size=100,
                             nproc=16)
 
+
+    print("-------------------------- Perturbation study beginning ----------- \n")
     # Perform in silico perturbation and output intermediate files
     isp.perturb_data(model,
                     path_to_train_dataset,

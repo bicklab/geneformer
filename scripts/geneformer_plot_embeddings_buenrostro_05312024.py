@@ -31,8 +31,8 @@ def parse_arguments():
 
     # Adding arguments with default values where specified
     parser.add_argument('--path_to_train_dataset', required=True)
-    parser.add_argument('--filter_field', required=True)
-    parser.add_argument('--filter_class', type=str, required=True)
+    #parser.add_argument('--filter_field', required=True)
+    #parser.add_argument('--filter_class', type=str, required=True)
     parser.add_argument('--pretrained_model', default='/grand/GeomicVar/pershy1/Geneformer/')
     parser.add_argument('--finetuned_model', required=True)
     parser.add_argument('--label_to_plot', required=True)
@@ -42,12 +42,12 @@ def parse_arguments():
     parser.add_argument('--plot_output_prefix', required=True)
     return parser.parse_args()
 
-def extract_embeddings(filter_data_dict, model, label_to_plot, input_dataset, embeddings_output_dir, state_embs_prefix):
+def extract_embeddings(model, label_to_plot, input_dataset, embeddings_output_dir, state_embs_prefix):
     # initiate EmbExtractor
     embex = EmbExtractor(model_type="CellClassifier",
                         num_classes=2,
-                        filter_data=filter_data_dict,
                         max_ncells=1000,
+                        #max_ncells=10000,
                         emb_layer=0,
                         emb_label=[label_to_plot],
                         labels_to_plot=[label_to_plot],
@@ -82,8 +82,8 @@ def main():
 
     # Use the arguments in the script
     path_to_train_dataset = args.path_to_train_dataset
-    filter_field = args.filter_field
-    filter_class = args.filter_class
+    #filter_field = args.filter_field
+    #filter_class = args.filter_class
     pretrained_model = args.pretrained_model
     finetuned_model = args.finetuned_model
     label_to_plot = args.label_to_plot
@@ -93,18 +93,18 @@ def main():
     plot_output_prefix = args.plot_output_prefix
 
     #setting up filter for class of interest (e.g., cell type)
-    filter_data_dict = {filter_field: [filter_class]}
+    #filter_data_dict = {filter_field: [filter_class]}
 
     #extract and plot embeddings for pretrained model
     pretrained_suffix = "_pretrained"
-    pretrained_embex, pretrained_embs = extract_embeddings(filter_data_dict, pretrained_model, label_to_plot, 
+    pretrained_embex, pretrained_embs = extract_embeddings(pretrained_model, label_to_plot, 
                        path_to_train_dataset, embeddings_output_dir + pretrained_suffix, 
                        state_embs_prefix + pretrained_suffix)
     plot_embeddings(pretrained_embex, pretrained_embs, plots_output_dir + pretrained_suffix, plot_output_prefix + pretrained_suffix) 
 
     #extract and plot embeddings for fine-tuned model
     finetuned_suffix = "_finetuned"
-    finetuned_embex, finetuned_embs = extract_embeddings(filter_data_dict, finetuned_model, label_to_plot, 
+    finetuned_embex, finetuned_embs = extract_embeddings(finetuned_model, label_to_plot, 
                        path_to_train_dataset, embeddings_output_dir + finetuned_suffix, 
                        state_embs_prefix + finetuned_suffix)
     plot_embeddings(finetuned_embex, finetuned_embs, plots_output_dir + finetuned_suffix, plot_output_prefix + finetuned_suffix)
