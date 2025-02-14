@@ -45,8 +45,7 @@ def parse_arguments():
     parser.add_argument('--embeddings_output_dir', required=True)
     parser.add_argument('--state_embs_prefix', required=True)
     parser.add_argument('--perturb_type', default='delete')
-    parser.add_argument('--gene_list', nargs='+', default='all') #remember must be Ensembl ID 
-    # e.g., ["ENSG00000168769", "ENSG00000119772", "ENSG00000171456", "ENSG00000096968", "ENSG00000141510"]
+    parser.add_argument('--gene_list_file') #remember must be Ensembl ID 
     parser.add_argument('--perturb_output', required=True)
     parser.add_argument('--perturb_prefix', required=True)
     parser.add_argument('--perturb_stats_output', required=True)
@@ -68,22 +67,26 @@ def main():
     embeddings_output_dir = args.embeddings_output_dir
     state_embs_prefix = args.state_embs_prefix
     perturb_type = args.perturb_type
-    gene_list = args.gene_list
-    print(gene_list)
+    gene_list_file = args.gene_list_file
     perturb_output = args.perturb_output
     perturb_prefix = args.perturb_prefix
+    print("PERTURB PREFIX IS *******")
+    print(perturb_prefix)
     perturb_stats_output = args.perturb_stats_output
     perturb_stats_prefix = args.perturb_stats_prefix
 
+    with open(gene_list_file, 'r') as file:
+        gene_list = [line.strip() for line in file.readlines()]
+
     # Setting up filter for class of interest (e.g., cell type)
-    filter_data_dict = {filter_field: [filter_class]}
+    #filter_data_dict = {filter_field: [filter_class]}
 
     # Obtain start, goal, and alternative embedding positions
     # Separate from perturb_data to avoid repeating calculations when parallelizing
     embex = EmbExtractor(model_type="CellClassifier",
                         num_classes=2,
-                        filter_data=filter_data_dict,
-                        max_ncells=1000,
+     #                   filter_data=filter_data_dict,
+                        max_ncells=500,
                         emb_layer=0,
                         summary_stat="exact_mean",
                         forward_batch_size=100,
@@ -112,10 +115,10 @@ def main():
                             num_classes=2,
                             emb_mode="cell",
                             cell_emb_style="mean_pool",
-                            filter_data=filter_data_dict,
+      #                      filter_data=filter_data_dict,
                             cell_states_to_model=cell_states_to_model,
                             state_embs_dict=state_embs_dict,
-                            max_ncells=2000,
+                            max_ncells=500,
                             emb_layer=0,
                             forward_batch_size=100,
                             nproc=16)

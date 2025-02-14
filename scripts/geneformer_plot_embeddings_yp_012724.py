@@ -46,7 +46,7 @@ def extract_embeddings(filter_data_dict, model, label_to_plot, input_dataset, em
     # initiate EmbExtractor
     embex = EmbExtractor(model_type="CellClassifier",
                         num_classes=2,
-                        filter_data=filter_data_dict,
+                        #filter_data=filter_data_dict,
                         max_ncells=1000,
                         #max_ncells=10000,
                         emb_layer=0,
