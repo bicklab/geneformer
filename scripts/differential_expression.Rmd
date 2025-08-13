@@ -1,0 +1,240 @@
+---
+title: "integrated_differential_expression"
+output: html_document
+---
+
+```{r setup}
+library(tidyverse)
+library(Seurat)
+library(SingleCellExperiment)
+library(scuttle)
+library(DESeq2)
+library(RColorBrewer)
+library(ggrepel)
+library(readxl)
+library(decoupleR)
+
+```
+
+# Prep for metacells.
+```{r}
+convert_to_10x = function(obj, samples) { 
+  for (i in 1:length(samples)) {
+    print(paste0("Converting sample ", samples[i]))
+    obj_sub = obj[[samples[i]]]
+    DropletUtils::write10xCounts(path = paste0(getwd(), "/input_data/metacells_files/", samples[i]), x = obj_sub[["RNA"]]@data, type = "sparse", version = "3")
+  }
+}
+
+
+# Split data.
+seu_tcell_annotated.list = Seurat::SplitObject(seu_tcell_annotated, split.by = "sample_cell_type")
+sample_names = unique(seu_tcell_annotated$sample_cell_type)
+
+# Convert.
+convert_to_10x(obj = seu_tcell_annotated.list, samples = sample_names)
+
+
+# Split data.
+seu_tcell_annotated.list = Seurat::SplitObject(seu_tcell_annotated, split.by = "sample_cell_type")
+tcell_sample_names = unique(seu_tcell_annotated$sample_cell_type)
+
+# Convert.
+convert_to_10x(obj = seu_tcell_annotated.list, samples = tcell_sample_names)
+
+
+```
+
+
+
+
+# Functions for differential expression.
+```{r}
+clump = function(agg_data, comparison, cell_type) {
+    metadata = colData(agg_data)[,c("group", "metacell", "sample_metacell")]
+    metadata$group = factor(metadata$group, levels = c("control", comparison)) # Establish to get the order we want.
+
+    dds = DESeqDataSetFromMatrix(round(assay(agg_data, "counts")), 
+                    colData = metadata, 
+                    design = ~ group) 
+    
+    keep = rowSums(counts(dds) >= 10) >= nrow(metadata) * 0.85  # at least 85% of metacells that have at least 10 transcripts    
+    dds = dds[keep,]
+    dds = DESeq(dds)
+    res = results(dds, contrast = c("group", comparison, "control"))
+
+    res_ordered_wald = res[order(res$padj),] %>%
+      as.data.frame() %>%
+      filter(!is.na(padj)) %>%
+      rownames_to_column("gene")
+    write_tsv(res_ordered_wald, paste0("tables/metacells_de/", comparison, "_", cell_type, ".tsv"))
+    return(res_ordered_wald)
+}
+
+run_comparisons = function(comparison, cases, controls, cell_type, seu_obj) {
+  
+  counts = seu_obj@assays$RNA
+
+  get_data = function(sample_id, cell_type, group) {
+    file = paste0("tables/metacells_output/", group, "_", tolower(sample_id), "_", cell_type, "_metacells.csv")
+    if(file.exists(file)) {
+      data = read_csv(file) %>%
+        mutate(sample_metacell = sample_id) %>%
+        mutate(group = group)
+      return(data)
+    } else {
+      return(NULL)
+    }
+    
+  }
+  
+  control_data_list = lapply(controls, get_data, cell_type, "control")
+  control_metadata = do.call("rbind", control_data_list)
+  
+  case_data_list = lapply(cases, get_data, cell_type, comparison)
+  case_metadata = do.call("rbind", case_data_list)
+ 
+  metadata = rbind(case_metadata, control_metadata) %>%
+    dplyr::rename(cell_barcode = `...1`) %>%
+    filter(metacell >= 0) # negative metacell assignments given to outliers
+  
+  complete_metadata = seu_obj@meta.data %>%
+    rownames_to_column("cell_barcode") %>%
+    dplyr::select(cell_barcode, Age, Sex, BMI) %>%
+    inner_join(metadata)
+  
+  if(sum(complete_metadata %>% filter(group != "Control") %>% pull(metacell) >= 0) < 1) {
+    print("Insufficient high quality metacells.")
+    return()
+  }
+
+  counts_subset = counts@counts[,complete_metadata$cell_barcode] # this syntax changes for seurat v4 and seurat v5 (counts vs counts@counts)
+  rownames(complete_metadata) = complete_metadata$cell_barcode
+
+  sce = SingleCellExperiment(counts_subset, colData = complete_metadata)
+  assayNames(sce) = "counts"
+
+  agg_data = aggregateAcrossCells(sce, ids = colData(sce)[,c("group", "sample_metacell", "metacell")])
+  comparison = clump(agg_data, comparison = comparison, cell_type = cell_type) 
+
+}
+
+```
+
+# Run PBMC differential expression.
+```{r}
+cell_types = unique(seu_tcell_annotated$cell_type)
+
+# Enriched tcell did not have metadata incorporated at the beginning.
+hatim_metadata = read_excel("input_data/HATIM_metadata_HIVnegative.xlsx") %>% dplyr::select(HATIMID, Age, Sex, VAF, BMI)
+chive_clinical_data = read_excel("input_data/CHIVE_clinical_data.xlsx") %>% dplyr::select(patient_id, BMI) %>% dplyr::rename(CHIVEID = "patient_id")
+
+seu_tcell_annotated@meta.data = seu_tcell_annotated@meta.data %>% rownames_to_column() %>% mutate(Age = as.double(Age)) %>%
+  left_join(hatim_metadata, by = "HATIMID") %>%
+  column_to_rownames() %>%
+  mutate(Age = ifelse(is.na(Age.x), Age.y, Age.x)) %>%
+  dplyr::select(-Age.x, -Age.y) %>%
+  mutate(Sex = ifelse(is.na(Sex.x), Sex.y, Sex.x)) %>%
+  dplyr::select(-Sex.x, -Sex.y) %>%
+  mutate(VAF = as.double(ifelse(is.na(VAF.x), VAF.y, VAF.x))) %>%
+  dplyr::select(-VAF.x, -VAF.y) %>%
+  mutate(BMI = as.double(ifelse(is.na(BMI.x), BMI.y, BMI.x))) %>%
+  dplyr::select(-BMI.x, -BMI.y)
+seu_tcell_annotated@meta.data = seu_tcell_annotated@meta.data %>% rownames_to_column() %>%
+  left_join(chive_clinical_data, by = "CHIVEID") %>%
+  column_to_rownames() %>%
+  mutate(BMI = as.double(ifelse(is.na(BMI.x), BMI.y, BMI.x))) %>%
+  dplyr::select(-BMI.x, -BMI.y)
+
+control_ids = seu_tcell_annotated@meta.data %>%
+  filter(CHIP == "Control") %>%
+  pull(Patient_ID) %>%
+  unique()
+
+#cell_types = c("Tcells")
+
+for (cell_type in cell_types) {
+  cell_type = gsub(" ", "_", tolower(cell_type))
+  tryCatch ({
+    run_comparisons(comparison = "control", cases = stim_ids, controls = control_ids, cell_type = cell_type, seu_obj = seu_tcell_annotated)
+  }, error = function(e) {
+    message(paste("An error occured ", cell_type))
+  })
+
+  tryCatch ({
+    run_comparisons(comparison = "control", cases = stim_ids, controls = control_ids, cell_type = cell_type, seu_obj = seu_tcell_annotated)
+
+  }, error = function(e) {
+    message(paste("An error occured for DNMT3A ", cell_type))
+  })
+}
+
+
+```
+
+# Run tcell tissue differential expression.
+```{r}
+cell_types = unique(seu_tcell_annotated$cell_type)
+cell_types = gsub("\\/", " and ", cell_types)
+
+seu_tcell_annotated@meta.data = seu_tcell_annotated@meta.data %>% rownames_to_column() %>% mutate(Age = as.double(Age), HATIMID = as.double(HATIMID)) %>%
+  left_join(hatim_metadata, by = "HATIMID") %>%
+  column_to_rownames() %>%
+  mutate(Age = ifelse(is.na(Age.x), Age.y, Age.x)) %>%
+  dplyr::select(-Age.x, -Age.y) %>%
+  mutate(Sex = ifelse(is.na(Sex.x), Sex.y, Sex.x)) %>%
+  dplyr::select(-Sex.x, -Sex.y) %>%
+  mutate(VAF = as.double(ifelse(is.na(VAF.x), VAF.y, VAF.x))) %>%
+  dplyr::select(-VAF.x, -VAF.y) %>%
+  mutate(BMI = as.double(ifelse(is.na(BMI.x), BMI.y, BMI.x))) %>%
+  dplyr::select(-BMI.x, -BMI.y)
+
+control_ids = seu_tcell_annotated@meta.data %>%
+  filter(CHIP == "Control") %>%
+  pull(Patient_ID) %>%
+  unique()
+
+tet2_ids = seu_tcell_annotated@meta.data %>%
+  filter(CHIP == "TET2") %>%
+  pull(Patient_ID) %>%
+  unique()
+
+dnmt3a_ids = seu_tcell_annotated@meta.data %>%
+  filter(CHIP == "DNMT3A") %>%
+  pull(Patient_ID) %>%
+  unique()
+
+for (cell_type in cell_types) {
+  cell_type = gsub(" ", "_", tolower(cell_type))
+  tryCatch ({
+    run_comparisons(comparison = "tet2", cases = tet2_ids, controls = control_ids, cell_type = cell_type, seu_obj = seu_tcell_annotated)
+  }, error = function(e) {
+    message(paste("An error occured for TET2 ", cell_type))
+  })
+
+  tryCatch ({
+    run_comparisons(comparison = "dnmt3a", cases = dnmt3a_ids, controls = control_ids, cell_type = cell_type, seu_obj = seu_tcell_annotated)
+
+  }, error = function(e) {
+    message(paste("An error occured for DNMT3A ", cell_type))
+  })
+}
+
+
+```
+
+```{r}
+pbmc_metadata = seu_tcell_annotated@meta.data %>%
+  dplyr::select(Patient_ID, Age, Sex, BMI, CHIP, VAF) %>%
+  unique()
+write_tsv(pbmc_metadata, "tables/metadata/pbmc_metadata.tsv")
+
+tcell_metadata = seu_tcell_annotated@meta.data %>%
+  dplyr::select(Patient_ID, Age, Sex, BMI, CHIP, VAF) %>%
+  unique()
+write_tsv(tcell_metadata, "tables/metadata/tcell_metadata.tsv")
+
+```
+
+
+
