@@ -3,6 +3,9 @@
 ## Abstract 
 The application of transfer learning models to large scale single-cell datasets has enabled the development of single-cell foundation models (scFMs) that can predict cellular responses to perturbations in silico. Although these predictions can be experimentally tested, current scFMs are unable to “close the loop” and learn from these experiments to create better predictions. Here, we introduce a “closed-loop” framework that extends the scFM by incorporating perturbation data during model fine-tuning. Our closed-loop model improves prediction accuracy, increasing positive predictive value in the setting of T-cell activation three-fold. We applied this model to RUNX1-familial platelet disorder, a rare pediatric blood disorder and identified two therapeutic targets (mTOR and CD74-MIF signaling axis) and two novel pathways (protein kinase C and phosphoinositide 3-kinase). This work establishes that iterative incorporation of experimental data to foundation models enhances biological predictions, representing a crucial step toward realizing the promise of "virtual cell" models for biomedical discovery.
 
+## Geneformer code 
+Code for Geneformer-30M-12L is available [here](https://huggingface.co/ctheodoris/Geneformer).
+
 ## T-cell activation experiments
 We used publicly available single-cell RNA sequencing data from 4 studies where T cells were either unstimulated or stimulated via CD3-CD28 beads or phorbol myristate acetate/ionomycin (PMA/ionomycin): 
 1.	[Kartha et al](https://www.sciencedirect.com/science/article/pii/S2666979X22001082) performed scRNAseq on resting and stimulated primary human peripheral blood mononuclear cells (PBMCs) from 4 donors. We included the scRNAseq data from 3,708 T cells which were unstimulated and 3,797 T cells which were stimulated with PMA/ionomycin along with Brefeldin A, a protein secretion inhibitor which allows us to isolate the primary effect of T cell activation. They were stimulated with PMA and Ionomycin calcium salt with or without Brefeldin A.
@@ -25,11 +28,12 @@ To enhance prediction accuracy, we developed a "closed-loop" ISP framework incor
 
 The script to perform in silico perturbation is [here](https://github.com/bicklab/geneformer/blob/main/scripts/geneformer_build_classifier_yp_012724.py). 
 
-```
-cd /Users/pershy1/geneformer
-git add .
-git commit -m "Updating geneformer scripts" (replace with more descriptive if desired)
-git push origin main
-```
+## Differential expression of RUNX1-knockout and control HSPCs
+Processing and analysis of scRNAseq data was performed primarily in R with the Seurat package. Doublets were identified with the Python package scrublet and removed. Cells with reads from fewer than 200 unique genes or fewer than 800 total transcripts were removed. A threshold was also set to exclude cells with greater than 25% mitochondrial transcripts, but capture of mitochondrial reads was negligible. Normalization and scaling was performed with SCTransform, followed by standard Seurat methods for dimensionality reduction and clustering. Top marker genes for each cluster were identified with the FindAllMarkers() function. Annotation of cell types was performed manually, based on marker genes. HSPCs were identified based on expression of KIT, CD34, and CD38. Single-cell measurements were collapsed into metacells to address sparsity challenges. Cells were grouped based on similarity of cell states using the Python package Metacell-2 with a targeted metacell size of 160,000 transcripts. Cells that were delivered the sgRNA for RUNX1 but clustered with the AAVS1 cells were predicted to be unedited cells and were thus excluded from differential expression analysis. Differential expression testing was performed using the Wald test for negative binomial regression through DESeq2 for genes that had at least 10 transcripts in at least 85% of metacells. 
 
-Voila! Now, polaris should match local which should match GitHub.
+Scripts for DE can be found [here](https://github.com/bicklab/geneformer/blob/main/scripts/differential_expression.Rmd). To convert objects to metacells, run [this](https://github.com/bicklab/geneformer/blob/main/scripts/metacells.py).
+
+## In silico perturbation prediction for RUNX1-knockout versus control
+We fine-tuned the pretrained Geneformer-30M-12L model using scRNAseq from 10,000 HSPCs after CRISPR to predict RUNX1-knockout vs AAVS1 control status using the same process as for T-cell activation. After fine-tuning, we performed in silico perturbation (ISP) using the InSilicoPerturber class to systematically analyze the effect of genetic perturbations on cell state as described above.
+
+The script to perform in silico perturbation is [here](https://github.com/bicklab/geneformer/blob/main/scripts/geneformer_isp_finetunedclassifier_yp_012724.py). 
