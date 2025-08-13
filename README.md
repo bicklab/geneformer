@@ -13,11 +13,17 @@ We used publicly available single-cell RNA sequencing data from 4 studies where 
 For analysis with Geneformer, the single-cell RNAseq data was combined into a Seurat object and converted to a Loom object for tokenization. For DE analysis, Harmony was used to integrate the data from the four studies. Cells were grouped based on similarity of cell states using the Python package Metacell-2 with a targeted metacell size of 160,000 transcripts. Differential expression testing was performed using the Wald test for negative binomial regression through DESeq2 for genes that had at least 10 transcripts in at least 85% of metacells.
 
 ## T-cell in silico perturbation
+For predicting T-cell activation status, we fine-tuned the pretrained Geneformer-30M-12L model using publicly available scRNA-seq data from four independent studies where T cells were stimulated via CD3-CD28 beads or PMA/ionomycin, comprising a total of 37,991 cells (20,707 activated, 17,284 resting). The fine-tuning process was implemented using a custom classifier framework with a learning rate of 5x10-5, batch size of 6, gradient accumulation steps of 2, and linear learning rate scheduling with warm-up over 10 epochs. All 12 transformer layers were kept unfrozen during training to allow complete model adaptation to the T-cell activation task. After fine-tuning, we performed in silico perturbation (ISP) using the InSilicoPerturber class to systematically analyze the effect of genetic perturbations on T-cell activation state. For each gene in the GeneCorpus, we simulated both overexpression (by moving the gene to the front of the rank value encoding) and knockout (by removing the gene from the encoding). Cell embeddings were extracted from the final layer (layer 12) of the model, as these contain the most task-specific representations relevant to T-cell activation. We quantified the effects of these perturbations by measuring the cosine similarity between the original and perturbed cell embeddings, allowing precise determination of how each perturbation shifted cells toward either activated or resting states. The InSilicoPerturberStats class was used to process and analyze the large-scale perturbation data, calculating effect sizes and statistical significance for each gene perturbation. 
+
+The script to perform in silico perturbation is [here](https://github.com/bicklab/geneformer/blob/main/scripts/geneformer_build_classifier_yp_012724.py). 
+
+## Evaluation of ISP for T cell activation with flow cytometry 
+We validated our predictions against orthogonal flow cytometry data by [Schmidt, Science, 2022](https://www.science.org/doi/10.1126/science.abj4008) to evaluate our predictions from CRISPR activation and interference screens that measured IL-2 and IFN-γ production after CD3-CD28 stimulation in over 18,000 genes. This allowed systematic evaluation of ISP predictions compared to differential expression (DE) analysis using ground truth experimental data as a benchmark. To determine the minimum number of perturbation examples required for significant improvement, we systematically evaluated model performance with incremental additions of random perturbation subsets. Performance metrics including positive predictive value, negative predictive value, sensitivity, and specificity were calculated using flow cytometry data as ground truth to quantify the improvements gained through the closed-loop approach.
+
+## Fine-tuning with T cell Perturbseq data
 
 
-We used the CRISPRa and CRISPRi results from {Schmidt, Science, 2022}(https://www.science.org/doi/10.1126/science.abj4008) to evaluate our predictions. 
 
-## 
 ```
 cd /Users/pershy1/geneformer
 git add .
